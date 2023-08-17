@@ -1,0 +1,82 @@
+##Download e Extração
+
+pip install unidecode
+
+import requests
+import pandas as pd
+import shutil
+import os
+import glob as gl
+import numpy as np
+import unidecode
+
+os.chdir("/content/dados_download")
+url=pd.read_csv("/content/url_ans.txt",delimiter=',',header=None)
+for i in url[0]:
+    r = requests.get(i, allow_redirects=True,verify=False)
+    open(i[92:], 'wb').write(r.content) # aloca arq no diretorio
+    shutil.unpack_archive(i[92:]) # descompacta o zip
+    os.unlink(i[92:]) # exclui o zip
+
+## Organização e Tratamento dos dados
+
+def dw_ano(ano_base):
+    ano_base = str(ano_base)
+    base_dados=list()
+    arq_anos = gl.glob("ben"+ano_base+"_*.csv")
+    for i in arq_anos:
+        df=pd.read_csv(i,delimiter=';',encoding='latin-1')
+        #df=df.astype({'#ID_CMPT_MOVEL': str})
+        #df['#ID_CMPT_MOVEL']='01'+'/'+df['#ID_CMPT_MOVEL'][0][4:6]+'/'+df['#ID_CMPT_MOVEL'][0][:4]
+        base_dados.append(df)
+    base_dados=pd.concat(base_dados)
+    base_dados=base_dados[['#ID_CMPT_MOVEL',
+     'CD_OPERADORA',
+     'CD_PLANO',
+     'CD_MUNICIPIO',
+     'COBERTURA_ASSIST_PLAN',
+     'DE_CONTRATACAO_PLANO',
+     'DE_SEGMENTACAO_PLANO',
+     'TIPO_VINCULO',
+     'QT_BENEFICIARIO_ATIVO',
+     'QT_BENEFICIARIO_ADERIDO',
+     'QT_BENEFICIARIO_CANCELADO']]
+    base_dados=base_dados.rename(columns = {'#ID_CMPT_MOVEL': 'DATA'})
+    base_dados['COBERTURA_ASSIST_PLAN'] = base_dados['COBERTURA_ASSIST_PLAN'].str.upper()
+    base_dados['COBERTURA_ASSIST_PLAN']= base_dados['COBERTURA_ASSIST_PLAN'].str.normalize('NFKD').str.encode('ascii', errors='ignore').str.decode('utf-8')
+    base_dados['DE_SEGMENTACAO_PLANO'] = base_dados['DE_SEGMENTACAO_PLANO'].str.normalize('NFKD').str.encode('ascii', errors='ignore').str.decode('utf-8')
+    base_dados=base_dados.groupby(['DATA',
+     'CD_OPERADORA',
+     'CD_PLANO',
+     'CD_MUNICIPIO',
+     'COBERTURA_ASSIST_PLAN',
+     'DE_CONTRATACAO_PLANO',
+     'DE_SEGMENTACAO_PLANO',
+     'TIPO_VINCULO']).agg({"QT_BENEFICIARIO_ATIVO" : "sum","QT_BENEFICIARIO_ADERIDO": "sum", "QT_BENEFICIARIO_CANCELADO":"sum"})
+    base_dados.to_csv("/content/dados_tratados/"+
+                      ano_base+'.csv',encoding='latin-1',sep=';')
+
+# anos base
+num=[np.arange(202212,202213),np.arange(202301,202307)]
+
+num=np.concatenate(num)
+for w in list(range(np.size(num))):
+    dw_ano(num[w])
+
+## construcao base ans ##
+
+os.chdir("/content/dados_tratados")
+
+arq_dados_anos=gl.glob("20*.csv")
+
+
+dados_ans=list()
+
+for i in arq_dados_anos:
+    df=pd.read_csv(i,delimiter=';',encoding='latin-1')
+    df=df.astype({'DATA': str})#
+    df['DATA']='01'+'/'+df['DATA'][0][4:6]+'/'+df['DATA'][0][:4]#
+    dados_ans.append(df)
+
+dados_ans=pd.concat(dados_ans)
+dados_ans.to_csv('dados_ans.csv',encoding='latin-1',sep=';',index=False)
